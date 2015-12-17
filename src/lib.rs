@@ -134,19 +134,36 @@ impl SmtpConnection {
                     "RCPT" => {
                         // Syntax RCPT To: <user@example.com>
 
-                        let lower_arg = arg.to_lowercase();
-                        if lower_arg.starts_with("to:") {
-                            let angle_brackets: &[_] = &['<', '>'];
-                            let address = lower_arg.trim_left_matches("to:")
-                                .trim().trim_matches(angle_brackets).trim();
+                        match self.mailfrom {
+                            Some(_) => {
+                                let lower_arg = arg.to_lowercase();
+                                if lower_arg.starts_with("to:") {
+                                    let angle_brackets: &[_] = &['<', '>'];
+                                    let address = lower_arg.trim_left_matches("to:")
+                                        .trim().trim_matches(angle_brackets).trim();
 
-                            self.rcpt = Some(address.to_string());
-                            try!(self.stream.write_all(b"250 OK\r\n"));
-                        }else {
-                            try!(self.stream.write_all(b"501 Syntax: RCPT To: <address>\r\n"));
+                                    self.rcpt = Some(address.to_string());
+                                    try!(self.stream.write_all(b"250 OK\r\n"));
+                                }else {
+                                    try!(self.stream.write_all(b"501 Syntax: RCPT To: <address>\r\n"));
+                                }
+                            },
+                            None => {
+                                try!(self.stream.write_all(b"503 Error: Send MAIL first\r\n"));
+                            }
                         }
                     },
                     "DATA" => {
+                        if self.hostname.is_none() {
+                            try!(self.stream.write_all(b"503 Error: Send HELO/EHLO first\r\n"));
+                            return Ok(());
+                        }
+                        
+                        if self.rcpt.is_none() {
+                            try!(self.stream.write_all(b"503 Error: Send RCPT first\r\n"));
+                            return Ok(());
+                        }
+
                         self.state = SmtpState::Data;
                         try!(self.stream.write_all(b"354 End data with <CRLF>.<CRLF>\r\n"));
                     },
@@ -178,8 +195,8 @@ impl SmtpConnection {
                 if line.trim() == "." {
                     try!(self.stream.write_all(b"250 OK\r\n"));
                     let mail = SmtpMail {
-                        from: self.mailfrom.clone().unwrap(),
-                        rcpt: self.rcpt.clone().unwrap(),
+                        from: self.mailfrom.clone().unwrap_or(String::new()),
+                        rcpt: self.rcpt.clone().unwrap_or(String::new()),
                         message_body: self.message.clone()
 
                     };
