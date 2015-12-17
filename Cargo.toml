@@ -1,0 +1,6 @@
+[package]
+name = "smtpd"
+version = "0.1.0"
+authors = ["Gökberk Yaltıraklı <webdosusb@gmail.com>"]
+
+[dependencies]
